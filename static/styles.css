@@ -1,0 +1,87 @@
+:root {
+  --bg: #0b1020;
+  --panel: #121936;
+  --panel-2: #182146;
+  --text: #eef2ff;
+  --muted: #aab3d1;
+  --line: #29325f;
+  --accent: #7aa2ff;
+  --green: #1fb981;
+  --red: #ef6a6a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #08101f 0%, #0d1430 100%);
+  color: var(--text);
+}
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px;
+}
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 24px;
+}
+.eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+h1 { margin: 6px 0; font-size: 40px; }
+.sub { color: var(--muted); margin: 0; }
+.summary { display: flex; gap: 16px; flex-wrap: wrap; }
+.card {
+  background: rgba(18,25,54,.9);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 20px;
+  min-width: 180px;
+}
+.card span { display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+.card strong { font-size: 26px; }
+.table-wrap {
+  overflow: auto;
+  background: rgba(18,25,54,.88);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1150px;
+}
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(41,50,95,.65);
+}
+tbody tr:hover { background: rgba(122,162,255,.06); }
+.ticker { font-weight: 800; letter-spacing: .02em; }
+.pill {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.positive { background: rgba(31,185,129,.15); color: #63e0ae; }
+.negative { background: rgba(239,106,106,.15); color: #ff9494; }
+.muted { color: var(--muted); }
+@media (max-width: 900px) {
+  .hero { flex-direction: column; align-items: start; }
+  .page { padding: 18px; }
+  h1 { font-size: 32px; }
+}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Portfolio dashboard</p>
+        <h1>Stocks & ETFs</h1>
+        <p class="sub">Table built from your shared holdings. ZYNE and OBSEF excluded.</p>
+      </div>
+      <div class="summary">
+        <div class="card">
+          <span>Total market value</span>
+          <strong>{{ total_value }}</strong>
+        </div>
+        <div class="card">
+          <span>Holdings</span>
+          <strong>{{ count }}</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Shares</th>
+            <th>Current Price</th>
+            <th>Market Value</th>
+            <th>Price Target</th>
+            <th>Fair Value</th>
+            <th>Upside to Target</th>
+            <th>Corr. to Gold</th>
+            <th>Corr. to Bitcoin</th>
+            <th>Corr. to Oil</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in portfolio %}
+          <tr>
+            <td><span class="ticker">{{ row.ticker }}</span></td>
+            <td>{{ '%.2f'|format(row.shares) }}</td>
+            <td>{{ row.current_price_fmt }}</td>
+            <td>{{ row.market_value_fmt }}</td>
+            <td>{{ row.price_target }}</td>
+            <td>{{ row.fair_value }}</td>
+            <td>
+              {% if row.upside_pct is not none %}
+                <span class="pill {{ 'positive' if row.upside_pct >= 0 else 'negative' }}">{{ '%.1f'|format(row.upside_pct) }}%</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>{{ row.corr_gold }}</td>
+            <td>{{ row.corr_btc }}</td>
+            <td>{{ row.corr_oil }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>
