@@ -5,230 +5,276 @@ import requests
 
 app = Flask(__name__)
 
-API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+FMP_API_KEY = os.getenv("FMP_API_KEY")
 
-HOLDINGS = [
-    {
-        "ticker": "NVDA",
-        "market_ticker": "NVDA",
-        "market_value": "$80,679.31",
-        "price_target": "$268.22",
-        "fair_value": "$260.00",
-        "corr_gold": "0.01 to -0.03",
-        "corr_bitcoin": "0.11 to 0.15",
-        "corr_oil": "~0.07",
-    },
-    {
-        "ticker": "TSM",
-        "market_ticker": "TSM",
-        "market_value": "$20,382.04",
-        "price_target": "$430.65",
-        "fair_value": "$400.00",
-        "corr_gold": "0.02",
-        "corr_bitcoin": "0.10",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "AMD",
-        "market_ticker": "AMD",
-        "market_value": "$18,179.10",
-        "price_target": "$289.61",
-        "fair_value": "$270.00",
-        "corr_gold": "Low",
-        "corr_bitcoin": "~0.09",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "MSFT",
-        "market_ticker": "MSFT",
-        "market_value": "$10,703.10",
-        "price_target": "$589.90",
-        "fair_value": "$420.00",
-        "corr_gold": "0.01",
-        "corr_bitcoin": "0.09",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "GOOGL",
-        "market_ticker": "GOOGL",
-        "market_value": "$5,486.80",
-        "price_target": "$376.75",
-        "fair_value": "$340.00",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "GLD",
-        "market_ticker": "GLD",
-        "market_value": "$10,367.50",
-        "price_target": "—",
-        "fair_value": "—",
-        "corr_gold": "1.00",
-        "corr_bitcoin": "0.07",
-        "corr_oil": "Low / Moderate",
-    },
-    {
-        "ticker": "HOOD",
-        "market_ticker": "HOOD",
-        "market_value": "$3,301.00",
-        "price_target": "$122.23",
-        "fair_value": "$194.61",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Moderate",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "AMZN",
-        "market_ticker": "AMZN",
-        "market_value": "$19,934.00",
-        "price_target": "$280.80",
-        "fair_value": "$281.46",
-        "corr_gold": "-0.00",
-        "corr_bitcoin": "0.09",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "ACHR",
-        "market_ticker": "ACHR",
-        "market_value": "$509.00",
-        "price_target": "$11.06",
-        "fair_value": "—",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low / Moderate",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "BABA",
-        "market_ticker": "BABA",
-        "market_value": "$3,176.44",
-        "price_target": "$188.46",
-        "fair_value": "$189.58",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "NIO",
-        "market_ticker": "NIO",
-        "market_value": "$531.00",
-        "price_target": "$6.52",
-        "fair_value": "$6.49",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low / Moderate",
-        "corr_oil": "Low / Moderate",
-    },
-    {
-        "ticker": "QS",
-        "market_ticker": "QS",
-        "market_value": "$323.70",
-        "price_target": "$7.91",
-        "fair_value": "$25.00",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low / Moderate",
-        "corr_oil": "Low / Moderate",
-    },
-    {
-        "ticker": "DIS",
-        "market_ticker": "DIS",
-        "market_value": "$5,591.41",
-        "price_target": "$129.30",
-        "fair_value": "$131.50",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "HUYA",
-        "market_ticker": "HUYA",
-        "market_value": "$672.83",
-        "price_target": "$4.01",
-        "fair_value": "$5.44",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "CRSR",
-        "market_ticker": "CRSR",
-        "market_value": "$532.00",
-        "price_target": "$5.00",
-        "fair_value": "$8.75 to $9.06",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low / Moderate",
-        "corr_oil": "Low",
-    },
-    {
-        "ticker": "EVGO",
-        "market_ticker": "EVGO",
-        "market_value": "$344.00",
-        "price_target": "$5.06",
-        "fair_value": "$5.27",
-        "corr_gold": "Low",
-        "corr_bitcoin": "Low / Moderate",
-        "corr_oil": "Low / Moderate",
-    },
+TICKERS = [
+    "NVDA", "TSM", "AMD", "MSFT", "GOOGL", "GLD", "HOOD", "AMZN",
+    "ACHR", "BABA", "NIO", "QS", "DIS", "HUYA", "CRSR", "EVGO"
 ]
 
-CACHE = {"timestamp": 0, "data": None}
-CACHE_TTL_SECONDS = 300
+ACQUISITION_COSTS = {
+    "NVDA": 7.19,
+    "TSM": 112.56,
+    "AMD": 77.87,
+    "MSFT": 232.61,
+    "GOOGL": 148.00,
+    "GLD": 414.01,
+    "HOOD": 99.38,
+    "AMZN": 242.43,
+    "ACHR": 8.91,
+    "BABA": 211.77,
+    "NIO": 19.04,
+    "QS": 46.49,
+    "DIS": 158.09,
+    "HUYA": 16.05,
+    "CRSR": 38.50,
+    "EVGO": 1.71,
+}
+
+ALPHA_BASE_URL = "https://www.alphavantage.co/query"
+FMP_DCF_URL = "https://financialmodelingprep.com/stable/discounted-cash-flow"
+
+QUOTE_TTL = 60 * 60          # 60 minutes
+TARGET_TTL = 24 * 60 * 60    # 24 hours
+FAIR_VALUE_TTL = 24 * 60 * 60
+NEWS_TTL = 30 * 60           # 30 minutes
+
+# Per-symbol caches
+QUOTE_CACHE = {}       # {symbol: {"timestamp": ..., "value": ...}}
+TARGET_CACHE = {}
+FAIR_VALUE_CACHE = {}
+NEWS_CACHE = {}
 
 
 def format_money(value):
-    return f"${value:,.2f}" if value is not None else "—"
+    if value in (None, "", "None", "—"):
+        return "—"
+    try:
+        return f"${float(value):,.2f}"
+    except Exception:
+        return str(value)
 
 
-def fetch_quote(symbol):
-    if not API_KEY:
+def alpha_get(params):
+    if not ALPHA_VANTAGE_API_KEY:
+        raise RuntimeError("Missing ALPHA_VANTAGE_API_KEY")
+
+    merged = dict(params)
+    merged["apikey"] = ALPHA_VANTAGE_API_KEY
+
+    response = requests.get(ALPHA_BASE_URL, params=merged, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+
+    if isinstance(data, dict):
+        if data.get("Note"):
+            raise RuntimeError(data["Note"])
+        if data.get("Information"):
+            raise RuntimeError(data["Information"])
+        if data.get("Error Message"):
+            raise RuntimeError(data["Error Message"])
+
+    return data
+
+
+def fmp_get_dcf(symbol):
+    if not FMP_API_KEY:
+        raise RuntimeError("Missing FMP_API_KEY")
+
+    response = requests.get(
+        FMP_DCF_URL,
+        params={"symbol": symbol, "apikey": FMP_API_KEY},
+        timeout=30
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if isinstance(data, dict) and data.get("Error Message"):
+        raise RuntimeError(data["Error Message"])
+
+    return data
+
+
+def get_cached(cache, key, ttl):
+    item = cache.get(key)
+    if not item:
         return None
+    if time.time() - item["timestamp"] < ttl:
+        return item["value"]
+    return None
 
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "GLOBAL_QUOTE",
-        "symbol": symbol,
-        "apikey": API_KEY,
+
+def set_cached(cache, key, value):
+    cache[key] = {
+        "timestamp": time.time(),
+        "value": value
     }
 
+
+def fetch_current_price(symbol):
+    cached = get_cached(QUOTE_CACHE, symbol, QUOTE_TTL)
+    if cached is not None:
+        return cached
+
+    data = alpha_get({
+        "function": "GLOBAL_QUOTE",
+        "symbol": symbol,
+    })
+    quote = data.get("Global Quote", {})
+    value = quote.get("05. price")
+    set_cached(QUOTE_CACHE, symbol, value)
+    return value
+
+
+def fetch_price_target(symbol):
+    cached = get_cached(TARGET_CACHE, symbol, TARGET_TTL)
+    if cached is not None:
+        return cached
+
+    data = alpha_get({
+        "function": "OVERVIEW",
+        "symbol": symbol,
+    })
+    value = data.get("AnalystTargetPrice")
+    set_cached(TARGET_CACHE, symbol, value)
+    return value
+
+
+def fetch_fair_value(symbol):
+    cached = get_cached(FAIR_VALUE_CACHE, symbol, FAIR_VALUE_TTL)
+    if cached is not None:
+        return cached
+
+    data = fmp_get_dcf(symbol)
+
+    if isinstance(data, list) and data:
+        row = data[0]
+    elif isinstance(data, dict):
+        row = data
+    else:
+        row = {}
+
+    value = None
+    for key in ("dcf", "DCF", "fairValue", "fair_value"):
+        if key in row:
+            value = row[key]
+            break
+
+    set_cached(FAIR_VALUE_CACHE, symbol, value)
+    return value
+
+
+def summarize_news(feed, symbol):
+    # Per your naming:
+    # Headwinds = positive momentum news
+    # Tailwinds = negative momentum news
+    positive = []
+    negative = []
+    recent_headlines = []
+
+    for item in feed[:5]:
+        title = (item.get("title") or "").strip()
+        if title:
+            recent_headlines.append(title)
+
+        score_value = None
+
+        for ts in item.get("ticker_sentiment", []):
+            if ts.get("ticker") == symbol:
+                try:
+                    score_value = float(ts.get("ticker_sentiment_score"))
+                except Exception:
+                    score_value = None
+                break
+
+        if score_value is None:
+            try:
+                score_value = float(item.get("overall_sentiment_score"))
+            except Exception:
+                score_value = None
+
+        label = (item.get("overall_sentiment_label") or "").lower()
+
+        if score_value is not None:
+            if score_value > 0.15 and title:
+                positive.append(title)
+            elif score_value < -0.15 and title:
+                negative.append(title)
+        else:
+            if "bullish" in label and title:
+                positive.append(title)
+            elif "bearish" in label and title:
+                negative.append(title)
+
+    if not positive:
+        positive = ["No clearly positive recent catalyst detected."]
+    if not negative:
+        negative = ["No clearly negative recent catalyst detected."]
+
+    return {
+        "headwinds": positive[:3],
+        "tailwinds": negative[:3],
+        "recent_headlines": recent_headlines[:5],
+    }
+
+
+def fetch_news(symbol):
+    cached = get_cached(NEWS_CACHE, symbol, NEWS_TTL)
+    if cached is not None:
+        return cached
+
+    data = alpha_get({
+        "function": "NEWS_SENTIMENT",
+        "tickers": symbol,
+        "sort": "LATEST",
+        "limit": 5,
+    })
+    feed = data.get("feed", [])[:5]
+    summary = summarize_news(feed, symbol)
+    set_cached(NEWS_CACHE, symbol, summary)
+    return summary
+
+
+def build_row(symbol):
     try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        payload = response.json()
-        quote = payload.get("Global Quote", {})
-        price = quote.get("05. price")
-        return float(price) if price else None
+        current_price = fetch_current_price(symbol)
+    except Exception as e:
+        current_price = None
+
+    try:
+        price_target = fetch_price_target(symbol)
     except Exception:
-        return None
+        price_target = None
+
+    try:
+        fair_value = fetch_fair_value(symbol)
+    except Exception:
+        fair_value = None
+
+    try:
+        news_summary = fetch_news(symbol)
+    except Exception as e:
+        news_summary = {
+            "headwinds": [f"Error loading news: {e}"],
+            "tailwinds": ["—"],
+            "recent_headlines": [],
+        }
+
+    return {
+        "ticker": symbol,
+        "acquisition_cost": format_money(ACQUISITION_COSTS.get(symbol)),
+        "current_price": format_money(current_price),
+        "price_target": format_money(price_target),
+        "fair_value": format_money(fair_value),
+        "headwinds": news_summary["headwinds"],
+        "tailwinds": news_summary["tailwinds"],
+        "recent_headlines": news_summary["recent_headlines"],
+    }
 
 
-def build_portfolio_rows():
-    rows = []
-
-    for holding in HOLDINGS:
-        live_price = fetch_quote(holding["market_ticker"])
-        rows.append({
-            "ticker": holding["ticker"],
-            "current_price": format_money(live_price),
-            "current_market_value": holding["market_value"],
-            "price_target": holding["price_target"],
-            "fair_value": holding["fair_value"],
-            "corr_gold": holding["corr_gold"],
-            "corr_bitcoin": holding["corr_bitcoin"],
-            "corr_oil": holding["corr_oil"],
-        })
-
-    return rows
-
-
-def get_cached_portfolio():
-    now = time.time()
-
-    if CACHE["data"] is not None and now - CACHE["timestamp"] < CACHE_TTL_SECONDS:
-        return CACHE["data"]
-
-    data = build_portfolio_rows()
-    CACHE["data"] = data
-    CACHE["timestamp"] = now
-    return data
+def get_portfolio_rows():
+    return [build_row(symbol) for symbol in TICKERS]
 
 
 @app.route("/")
@@ -238,11 +284,18 @@ def index():
 
 @app.route("/api/portfolio")
 def portfolio_api():
+    rows = get_portfolio_rows()
     return jsonify({
         "updated_at": int(time.time()),
-        "rows": get_cached_portfolio()
+        "refresh_windows": {
+            "quotes_minutes": 60,
+            "price_targets_hours": 24,
+            "fair_values_hours": 24,
+            "news_minutes": 30
+        },
+        "rows": rows,
     })
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=10000, debug=True)
