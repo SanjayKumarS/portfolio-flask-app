@@ -11,17 +11,15 @@
             background: #f7f9fc;
             color: #1f2937;
         }
-
         h1 {
             margin-bottom: 8px;
         }
-
         .meta {
             margin-bottom: 16px;
             color: #6b7280;
             font-size: 14px;
+            line-height: 1.5;
         }
-
         .table-wrap {
             overflow-x: auto;
             background: white;
@@ -29,44 +27,54 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
             padding: 12px;
         }
-
         table {
             border-collapse: collapse;
             width: 100%;
-            min-width: 1100px;
+            min-width: 1200px;
         }
-
         th, td {
             padding: 12px 14px;
             border-bottom: 1px solid #e5e7eb;
             text-align: left;
-            white-space: nowrap;
+            vertical-align: top;
         }
-
         th {
             background: #111827;
             color: white;
             position: sticky;
             top: 0;
+            white-space: nowrap;
         }
-
         tr:hover {
             background: #f3f4f6;
         }
-
         .loading {
             color: #2563eb;
         }
-
         .error {
             color: #dc2626;
+        }
+        .news-cell {
+            min-width: 280px;
+            white-space: normal;
+            line-height: 1.4;
+        }
+        .headline-cell {
+            min-width: 360px;
+            white-space: normal;
+            line-height: 1.4;
+        }
+        ul {
+            margin: 0;
+            padding-left: 18px;
         }
     </style>
 </head>
 <body>
     <h1>Portfolio Table</h1>
     <div class="meta">
-        Last updated: <span id="last-updated" class="loading">Loading...</span>
+        Last updated: <span id="last-updated" class="loading">Loading...</span><br>
+        Refresh schedule: <span id="refresh-schedule" class="loading">Loading...</span>
     </div>
 
     <div class="table-wrap">
@@ -74,26 +82,32 @@
             <thead>
                 <tr>
                     <th>Ticker</th>
+                    <th>Acquisition Cost</th>
                     <th>Current Price</th>
-                    <th>Current Market Value</th>
                     <th>Price Target</th>
                     <th>Fair Value</th>
-                    <th>Correlation to Gold</th>
-                    <th>Correlation to Bitcoin</th>
-                    <th>Correlation to Oil</th>
+                    <th>Headwinds</th>
+                    <th>Tailwinds</th>
+                    <th>5 Most Recent Headlines</th>
                 </tr>
             </thead>
             <tbody id="portfolio-body">
                 <tr>
-                    <td colspan="8" class="loading">Loading live data...</td>
+                    <td colspan="8" class="loading">Loading data...</td>
                 </tr>
             </tbody>
         </table>
     </div>
 
     <script>
+        function toList(items) {
+            if (!items || !items.length) return "—";
+            return `<ul>${items.map(x => `<li>${x}</li>`).join("")}</ul>`;
+        }
+
         async function loadPortfolio() {
             const lastUpdatedEl = document.getElementById("last-updated");
+            const refreshScheduleEl = document.getElementById("refresh-schedule");
             const tbody = document.getElementById("portfolio-body");
 
             try {
@@ -111,28 +125,38 @@
                     const tr = document.createElement("tr");
                     tr.innerHTML = `
                         <td>${row.ticker}</td>
+                        <td>${row.acquisition_cost}</td>
                         <td>${row.current_price}</td>
-                        <td>${row.current_market_value}</td>
                         <td>${row.price_target}</td>
                         <td>${row.fair_value}</td>
-                        <td>${row.corr_gold}</td>
-                        <td>${row.corr_bitcoin}</td>
-                        <td>${row.corr_oil}</td>
+                        <td class="news-cell">${toList(row.headwinds)}</td>
+                        <td class="news-cell">${toList(row.tailwinds)}</td>
+                        <td class="headline-cell">${toList(row.recent_headlines)}</td>
                     `;
                     tbody.appendChild(tr);
                 });
 
                 const updatedAt = new Date(payload.updated_at * 1000);
-                lastUpdatedEl.textContent = updatedAt.toLocaleTimeString();
+                lastUpdatedEl.textContent = updatedAt.toLocaleString();
                 lastUpdatedEl.className = "";
+
+                const rw = payload.refresh_windows || {};
+                refreshScheduleEl.textContent =
+                    `Quotes: ${rw.quotes_minutes ?? "—"} min | ` +
+                    `Targets: ${rw.price_targets_hours ?? "—"} hr | ` +
+                    `Fair values: ${rw.fair_values_hours ?? "—"} hr | ` +
+                    `News: ${rw.news_minutes ?? "—"} min`;
+                refreshScheduleEl.className = "";
             } catch (error) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="error">Could not load live data.</td>
+                        <td colspan="8" class="error">Could not load data.</td>
                     </tr>
                 `;
                 lastUpdatedEl.textContent = "Error";
                 lastUpdatedEl.className = "error";
+                refreshScheduleEl.textContent = "Error";
+                refreshScheduleEl.className = "error";
             }
         }
 
