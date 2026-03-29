@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Research</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -11,18 +12,21 @@
             background: #f7f9fc;
             color: #1f2937;
         }
+
         h1 {
             margin-bottom: 8px;
         }
+
         .meta {
             margin-bottom: 16px;
             color: #6b7280;
             font-size: 14px;
             line-height: 1.5;
         }
+
         .controls {
             display: grid;
-            grid-template-columns: 240px 1fr auto auto;
+            grid-template-columns: 240px 1fr auto;
             gap: 12px;
             align-items: end;
             background: white;
@@ -31,12 +35,14 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
             margin-bottom: 16px;
         }
+
         .control-group label {
             display: block;
             margin-bottom: 6px;
             font-size: 14px;
             font-weight: 600;
         }
+
         select, input, button {
             width: 100%;
             padding: 10px 12px;
@@ -45,64 +51,111 @@
             font-size: 14px;
             box-sizing: border-box;
         }
+
         button {
             width: auto;
             cursor: pointer;
-            background: #111827;
+            background: #2563eb;
             color: white;
             border: none;
         }
-        button.secondary {
-            background: white;
-            color: #1f2937;
-            border: 1px solid #cbd5e1;
+
+        button.refresh-btn {
+            background: #111827;
         }
-        .table-wrap {
-            overflow-x: auto;
+
+        .top-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 16px;
+        }
+
+        .cards {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            margin-bottom: 16px;
+        }
+
+        .info-card, .metric-card, .section-card, .chart-card {
             background: white;
             border-radius: 12px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            padding: 12px;
         }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            min-width: 1200px;
+
+        .info-card, .metric-card {
+            padding: 14px 16px;
         }
-        th, td {
-            padding: 12px 14px;
-            border-bottom: 1px solid #e5e7eb;
-            text-align: left;
-            vertical-align: top;
+
+        .info-card-title, .metric-title {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 6px;
         }
-        th {
-            background: #111827;
-            color: white;
-            position: sticky;
-            top: 0;
-            white-space: nowrap;
+
+        .info-card-value, .metric-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #111827;
         }
-        tr:hover {
-            background: #f3f4f6;
+
+        .metrics {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            margin-bottom: 16px;
         }
-        .news-cell {
-            min-width: 280px;
-            white-space: normal;
-            line-height: 1.4;
+
+        .metric-card {
+            background: #ffffff;
         }
-        .headline-cell {
-            min-width: 360px;
-            white-space: normal;
-            line-height: 1.4;
+
+        .chart-card {
+            padding: 16px;
+            margin-bottom: 16px;
         }
-        .loading { color: #2563eb; }
-        .error { color: #dc2626; }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .chart-subtitle {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+
+        .chart-wrap {
+            position: relative;
+            height: 380px;
+        }
+
+        .sections {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .section-card {
+            padding: 16px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
         ul {
             margin: 0;
             padding-left: 18px;
+            line-height: 1.5;
         }
+
         .banner {
-            margin-top: 12px;
+            margin-top: 16px;
             background: #fef3c7;
             color: #92400e;
             border: 1px solid #fde68a;
@@ -110,12 +163,40 @@
             padding: 12px 14px;
             font-size: 14px;
         }
+
+        .loading {
+            color: #2563eb;
+        }
+
+        .error {
+            color: #dc2626;
+        }
+
+        @media (max-width: 1100px) {
+            .cards {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .metrics {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .sections {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (max-width: 900px) {
             .controls {
                 grid-template-columns: 1fr;
             }
+
             button {
                 width: 100%;
+            }
+
+            .cards, .metrics {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -124,12 +205,21 @@
     <h1>Portfolio Research</h1>
     <div class="meta">
         Last updated: <span id="last-updated" class="loading">Loading...</span><br>
-        Refresh schedule: Quotes 60 min | Targets 24 hr | Fair values 24 hr | News 30 min
+        Refresh schedule:
+        Quotes 60 min |
+        Targets 24 hr |
+        Fair values 24 hr |
+        News 30 min |
+        Chart context 24 hr
+    </div>
+
+    <div class="top-actions">
+        <button id="refresh-button" type="button" class="refresh-btn">Force Refresh</button>
     </div>
 
     <div class="controls">
         <div class="control-group">
-            <label for="owned-ticker">Owned ticker</label>
+            <label for="owned-ticker">Owned Ticker</label>
             <select id="owned-ticker">
                 {% for ticker in owned_tickers %}
                 <option value="{{ ticker }}">{{ ticker }}</option>
@@ -138,34 +228,76 @@
         </div>
 
         <div class="control-group">
-            <label for="search-ticker">Research any ticker</label>
+            <label for="search-ticker">Research Any Ticker</label>
             <input id="search-ticker" type="text" placeholder="Enter ticker, e.g. META" />
         </div>
 
         <button id="search-button" type="button">Search</button>
-        <button id="reset-button" type="button" class="secondary">Use dropdown ticker</button>
     </div>
 
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Ticker</th>
-                    <th>Acquisition Cost</th>
-                    <th>Current Price</th>
-                    <th>Price Target</th>
-                    <th>Fair Value</th>
-                    <th>Headwinds</th>
-                    <th>Tailwinds</th>
-                    <th>5 Most Recent Headlines</th>
-                </tr>
-            </thead>
-            <tbody id="ticker-body">
-                <tr>
-                    <td colspan="8" class="loading">Loading data...</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="cards">
+        <div class="info-card">
+            <div class="info-card-title">Active Ticker</div>
+            <div class="info-card-value" id="active-ticker-card">—</div>
+        </div>
+        <div class="info-card">
+            <div class="info-card-title">Quotes Updated</div>
+            <div class="info-card-value" id="quotes-updated">—</div>
+        </div>
+        <div class="info-card">
+            <div class="info-card-title">Targets Updated</div>
+            <div class="info-card-value" id="targets-updated">—</div>
+        </div>
+        <div class="info-card">
+            <div class="info-card-title">Chart Context Updated</div>
+            <div class="info-card-value" id="chart-updated">—</div>
+        </div>
+    </div>
+
+    <div class="metrics">
+        <div class="metric-card">
+            <div class="metric-title">Ticker</div>
+            <div class="metric-value" id="metric-ticker">—</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Acquisition Cost</div>
+            <div class="metric-value" id="metric-acquisition-cost">—</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Current Price</div>
+            <div class="metric-value" id="metric-current-price">—</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Price Target</div>
+            <div class="metric-value" id="metric-price-target">—</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Fair Value</div>
+            <div class="metric-value" id="metric-fair-value">—</div>
+        </div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-title">Price Movement with 50-Day and 200-Day Moving Averages</div>
+        <div class="chart-subtitle">Historical daily prices are served from cached chart context and refreshed every 24 hours.</div>
+        <div class="chart-wrap">
+            <canvas id="priceChart"></canvas>
+        </div>
+    </div>
+
+    <div class="sections">
+        <div class="section-card">
+            <div class="section-title">Headwinds</div>
+            <div id="headwinds-content">—</div>
+        </div>
+        <div class="section-card">
+            <div class="section-title">Tailwinds</div>
+            <div id="tailwinds-content">—</div>
+        </div>
+        <div class="section-card">
+            <div class="section-title">5 Most Recent Headlines</div>
+            <div id="headlines-content">—</div>
+        </div>
     </div>
 
     <div id="research-banner"></div>
@@ -174,13 +306,28 @@
         const ownedSelect = document.getElementById("owned-ticker");
         const searchInput = document.getElementById("search-ticker");
         const searchButton = document.getElementById("search-button");
-        const resetButton = document.getElementById("reset-button");
-        const tbody = document.getElementById("ticker-body");
+        const refreshButton = document.getElementById("refresh-button");
         const lastUpdatedEl = document.getElementById("last-updated");
         const researchBanner = document.getElementById("research-banner");
 
+        const activeTickerCard = document.getElementById("active-ticker-card");
+        const quotesUpdated = document.getElementById("quotes-updated");
+        const targetsUpdated = document.getElementById("targets-updated");
+        const chartUpdated = document.getElementById("chart-updated");
+
+        const metricTicker = document.getElementById("metric-ticker");
+        const metricAcquisitionCost = document.getElementById("metric-acquisition-cost");
+        const metricCurrentPrice = document.getElementById("metric-current-price");
+        const metricPriceTarget = document.getElementById("metric-price-target");
+        const metricFairValue = document.getElementById("metric-fair-value");
+
+        const headwindsContent = document.getElementById("headwinds-content");
+        const tailwindsContent = document.getElementById("tailwinds-content");
+        const headlinesContent = document.getElementById("headlines-content");
+
         let activeSearchTicker = "";
         let refreshInterval = null;
+        let priceChart = null;
 
         function toList(items) {
             if (!items || !items.length) return "—";
@@ -191,6 +338,94 @@
             return activeSearchTicker || ownedSelect.value;
         }
 
+        function formatTimestamp(ts) {
+            if (!ts) return "Not loaded yet";
+            return new Date(ts * 1000).toLocaleString();
+        }
+
+        function renderChart(chartData) {
+            const ctx = document.getElementById("priceChart").getContext("2d");
+
+            if (priceChart) {
+                priceChart.destroy();
+            }
+
+            const labels = chartData.map(point => point.label);
+            const closeData = chartData.map(point => point.close);
+            const ma50Data = chartData.map(point => point.ma50);
+            const ma200Data = chartData.map(point => point.ma200);
+
+            priceChart = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Close",
+                            data: closeData,
+                            borderWidth: 2,
+                            tension: 0.2,
+                            pointRadius: 0
+                        },
+                        {
+                            label: "50-Day MA",
+                            data: ma50Data,
+                            borderWidth: 2,
+                            tension: 0.2,
+                            pointRadius: 0
+                        },
+                        {
+                            label: "200-Day MA",
+                            data: ma200Data,
+                            borderWidth: 2,
+                            tension: 0.2,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(items) {
+                                    const idx = items[0].dataIndex;
+                                    return chartData[idx]?.date || items[0].label;
+                                },
+                                label: function(context) {
+                                    const value = context.raw;
+                                    if (value === null || value === undefined) return `${context.dataset.label}: —`;
+                                    return `${context.dataset.label}: $${Number(value).toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 10
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return "$" + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         async function loadTicker(symbol) {
             try {
                 const response = await fetch(`/api/ticker?symbol=${encodeURIComponent(symbol)}`);
@@ -198,23 +433,27 @@
 
                 const payload = await response.json();
                 const row = payload.row;
+                const lastRefresh = payload.last_refresh || {};
 
-                tbody.innerHTML = `
-                    <tr>
-                        <td>${row.ticker}</td>
-                        <td>${row.acquisition_cost}</td>
-                        <td>${row.current_price}</td>
-                        <td>${row.price_target}</td>
-                        <td>${row.fair_value}</td>
-                        <td class="news-cell">${toList(row.headwinds)}</td>
-                        <td class="news-cell">${toList(row.tailwinds)}</td>
-                        <td class="headline-cell">${toList(row.recent_headlines)}</td>
-                    </tr>
-                `;
-
-                const updatedAt = new Date(payload.updated_at * 1000);
-                lastUpdatedEl.textContent = updatedAt.toLocaleString();
+                lastUpdatedEl.textContent = new Date(payload.updated_at * 1000).toLocaleString();
                 lastUpdatedEl.className = "";
+
+                activeTickerCard.textContent = row.ticker;
+                quotesUpdated.textContent = formatTimestamp(lastRefresh.quotes);
+                targetsUpdated.textContent = formatTimestamp(lastRefresh.targets);
+                chartUpdated.textContent = formatTimestamp(lastRefresh.chart_context);
+
+                metricTicker.textContent = row.ticker;
+                metricAcquisitionCost.textContent = row.acquisition_cost;
+                metricCurrentPrice.textContent = row.current_price;
+                metricPriceTarget.textContent = row.price_target;
+                metricFairValue.textContent = row.fair_value;
+
+                headwindsContent.innerHTML = toList(row.headwinds);
+                tailwindsContent.innerHTML = toList(row.tailwinds);
+                headlinesContent.innerHTML = toList(row.recent_headlines);
+
+                renderChart(row.chart_data || []);
 
                 if (!row.is_owned) {
                     researchBanner.innerHTML = `
@@ -226,13 +465,12 @@
                     researchBanner.innerHTML = "";
                 }
             } catch (error) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="8" class="error">Could not load ticker data.</td>
-                    </tr>
-                `;
                 lastUpdatedEl.textContent = "Error";
                 lastUpdatedEl.className = "error";
+                headwindsContent.innerHTML = `<span class="error">Could not load ticker data.</span>`;
+                tailwindsContent.innerHTML = "—";
+                headlinesContent.innerHTML = "—";
+                renderChart([]);
             }
         }
 
@@ -262,11 +500,8 @@
             }
         });
 
-        resetButton.addEventListener("click", () => {
-            activeSearchTicker = "";
-            searchInput.value = "";
+        refreshButton.addEventListener("click", () => {
             loadTicker(getActiveTicker());
-            restartAutoRefresh();
         });
 
         loadTicker(getActiveTicker());
