@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import os
 import time
 import atexit
@@ -10,12 +10,10 @@ app = Flask(__name__)
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
 
-TICKERS = [
+OWNED_TICKERS = [
     "NVDA", "TSM", "AMD", "MSFT", "GOOGL", "GLD", "HOOD", "AMZN",
     "ACHR", "BABA", "NIO", "QS", "DIS", "HUYA", "CRSR", "EVGO"
 ]
-
-TICKER_SET = set(TICKERS)
 
 ACQUISITION_COSTS = {
     "NVDA": 7.19,
@@ -37,12 +35,7 @@ ACQUISITION_COSTS = {
 }
 
 ALPHA_BASE_URL = "https://www.alphavantage.co/query"
-FMP_DCF_BULK_URL = "https://financialmodelingprep.com/stable/dcf-bulk"
-
-QUOTE_TTL = 60 * 60
-TARGET_TTL = 24 * 60 * 60
-FAIR_VALUE_TTL = 24 * 60 * 60
-NEWS_TTL = 30 * 60
+FMP_DCF_URL = "https://financialmodelingprep.com/stable/discounted-cash-flow"
 
 QUOTE_CACHE = {}
 TARGET_CACHE = {}
@@ -90,35 +83,27 @@ def alpha_get(params):
     return data
 
 
-def fmp_get_dcf_bulk():
+def fmp_get_dcf(symbol):
     if not FMP_API_KEY:
         raise RuntimeError("Missing FMP_API_KEY")
 
     response = requests.get(
-        FMP_DCF_BULK_URL,
-        params={"apikey": FMP_API_KEY},
-        timeout=60
+        FMP_DCF_URL,
+        params={"symbol": symbol, "apikey": FMP_API_KEY},
+        timeout=30
     )
     response.raise_for_status()
     data = response.json()
-
-    if isinstance(data, dict) and data.get("Error Message"):
-        raise RuntimeError(data["Error Message"])
-
     return data
 
 
-def get_cached(cache, key, ttl):
-    item = cache.get(key)
-    if not item:
-        return None
-    if time.time() - item["timestamp"] < ttl:
-        return item["value"]
-    return None
-
-
 def set_cached(cache, key, value):
-    cache[key] = {"timestamp": time.time(), "value": value}
+    cache[key] = {"timestamp": int(time.time()), "value": value}
+
+
+def get_cached_value(cache, key):
+    item = cache.get(key)
+    return item["value"] if item else None
 
 
 def fetch_current_price(symbol):
@@ -130,6 +115,22 @@ def fetch_current_price(symbol):
 def fetch_price_target(symbol):
     data = alpha_get({"function": "OVERVIEW", "symbol": symbol})
     return data.get("AnalystTargetPrice")
+
+
+def fetch_fair_value(symbol):
+    data = fmp_get_dcf(symbol)
+
+    if isinstance(data, list) and data:
+        row = data[0]
+    elif isinstance(data, dict):
+        row = data
+    else:
+        row = {}
+
+    for key in ("dcf", "DCF", "fairValue", "fair_value"):
+        if key in row:
+            return row[key]
+    return None
 
 
 def summarize_news(feed, symbol):
@@ -159,9 +160,9 @@ def summarize_news(feed, symbol):
 
         label = (item.get("overall_sentiment_label") or "").lower()
 
-        # Per your naming:
-        # Headwinds = positive momentum news
-        # Tailwinds = negative momentum news
+        # per your naming:
+        # Headwinds = positive momentum
+        # Tailwinds = negative momentum
         if score_value is not None:
             if score_value > 0.15 and title:
                 positive.append(title)
@@ -196,151 +197,69 @@ def fetch_news(symbol):
     return summarize_news(feed, symbol)
 
 
+def refresh_symbol(symbol):
+    try:
+        set_cached(QUOTE_CACHE, symbol, fetch_current_price(symbol))
+    except Exception:
+        pass
+
+    try:
+        set_cached(TARGET_CACHE, symbol, fetch_price_target(symbol))
+    except Exception:
+        pass
+
+    try:
+        set_cached(FAIR_VALUE_CACHE, symbol, fetch_fair_value(symbol))
+    except Exception:
+        pass
+
+    try:
+        set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
+    except Exception:
+        pass
+
+
 def refresh_quotes():
-    results = {}
-    for symbol in TICKERS:
+    for symbol in OWNED_TICKERS:
         try:
             set_cached(QUOTE_CACHE, symbol, fetch_current_price(symbol))
-            results[symbol] = "ok"
-        except Exception as e:
-            results[symbol] = f"error: {e}"
+        except Exception:
+            pass
     LAST_REFRESH["quotes"] = int(time.time())
-    return results
 
 
 def refresh_targets():
-    results = {}
-    for symbol in TICKERS:
+    for symbol in OWNED_TICKERS:
         try:
             set_cached(TARGET_CACHE, symbol, fetch_price_target(symbol))
-            results[symbol] = "ok"
-        except Exception as e:
-            results[symbol] = f"error: {e}"
+        except Exception:
+            pass
     LAST_REFRESH["targets"] = int(time.time())
-    return results
 
 
-def refresh_fair_values_bulk():
-    results = {}
-    try:
-        data = fmp_get_dcf_bulk()
-        seen = set()
-
-        for row in data if isinstance(data, list) else []:
-            symbol = row.get("symbol")
-            if symbol not in TICKER_SET:
-                continue
-
-            value = None
-            for key in ("dcf", "DCF", "fairValue", "fair_value"):
-                if key in row:
-                    value = row[key]
-                    break
-
-            set_cached(FAIR_VALUE_CACHE, symbol, value)
-            results[symbol] = "ok"
-            seen.add(symbol)
-
-        for symbol in TICKERS:
-            if symbol not in seen:
-                set_cached(FAIR_VALUE_CACHE, symbol, None)
-                results[symbol] = "missing"
-
-    except Exception as e:
-        for symbol in TICKERS:
-            results[symbol] = f"error: {e}"
-
+def refresh_fair_values():
+    for symbol in OWNED_TICKERS:
+        try:
+            set_cached(FAIR_VALUE_CACHE, symbol, fetch_fair_value(symbol))
+        except Exception:
+            pass
     LAST_REFRESH["fair_values"] = int(time.time())
-    return results
 
 
-def refresh_news():
-    results = {}
-    for symbol in TICKERS:
+def refresh_news_all():
+    for symbol in OWNED_TICKERS:
         try:
             set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
-            results[symbol] = "ok"
-        except Exception as e:
-            results[symbol] = f"error: {e}"
+        except Exception:
+            pass
     LAST_REFRESH["news"] = int(time.time())
-    return results
 
 
 def prime_caches():
-    # initial load on startup
-    try:
-        refresh_quotes()
-    except Exception:
-        pass
-
-    try:
-        refresh_targets()
-    except Exception:
-        pass
-
-    try:
-        refresh_fair_values_bulk()
-    except Exception:
-        pass
-
-    try:
-        refresh_news()
-    except Exception:
-        pass
-
-
-def build_row(symbol):
-    current_price = get_cached(QUOTE_CACHE, symbol, QUOTE_TTL)
-    price_target = get_cached(TARGET_CACHE, symbol, TARGET_TTL)
-    fair_value = get_cached(FAIR_VALUE_CACHE, symbol, FAIR_VALUE_TTL)
-    news_summary = get_cached(NEWS_CACHE, symbol, NEWS_TTL)
-
-    if current_price is None:
-        try:
-            current_price = fetch_current_price(symbol)
-            set_cached(QUOTE_CACHE, symbol, current_price)
-        except Exception:
-            current_price = None
-
-    if price_target is None:
-        try:
-            price_target = fetch_price_target(symbol)
-            set_cached(TARGET_CACHE, symbol, price_target)
-        except Exception:
-            price_target = None
-
-    if fair_value is None:
-        try:
-            refresh_fair_values_bulk()
-            fair_value = get_cached(FAIR_VALUE_CACHE, symbol, FAIR_VALUE_TTL)
-        except Exception:
-            fair_value = None
-
-    if news_summary is None:
-        try:
-            news_summary = fetch_news(symbol)
-            set_cached(NEWS_CACHE, symbol, news_summary)
-        except Exception as e:
-            news_summary = {
-                "headwinds": [f"Error loading news: {e}"],
-                "tailwinds": ["—"],
-                "recent_headlines": [],
-            }
-
-    return {
-        "ticker": symbol,
-        "acquisition_cost": format_money(ACQUISITION_COSTS.get(symbol)),
-        "current_price": format_money(current_price),
-        "price_target": format_money(price_target),
-        "fair_value": format_money(fair_value),
-        "headwinds": news_summary["headwinds"],
-        "tailwinds": news_summary["tailwinds"],
-        "recent_headlines": news_summary["recent_headlines"],
-    }
-
-
-def get_portfolio_rows():
-    return [build_row(symbol) for symbol in TICKERS]
+    refresh_quotes()
+    refresh_targets()
+    refresh_fair_values()
+    refresh_news_all()
 
 
 def start_scheduler():
@@ -366,7 +285,7 @@ def start_scheduler():
         coalesce=True,
     )
     scheduler.add_job(
-        refresh_fair_values_bulk,
+        refresh_fair_values,
         trigger="interval",
         hours=24,
         id="refresh_fair_values",
@@ -375,7 +294,7 @@ def start_scheduler():
         coalesce=True,
     )
     scheduler.add_job(
-        refresh_news,
+        refresh_news_all,
         trigger="interval",
         minutes=30,
         id="refresh_news",
@@ -388,18 +307,71 @@ def start_scheduler():
     atexit.register(lambda: scheduler.shutdown(wait=False))
 
 
-# start once on process startup
+def build_row(symbol):
+    symbol = symbol.upper()
+
+    if get_cached_value(QUOTE_CACHE, symbol) is None:
+        try:
+            set_cached(QUOTE_CACHE, symbol, fetch_current_price(symbol))
+        except Exception:
+            pass
+
+    if get_cached_value(TARGET_CACHE, symbol) is None:
+        try:
+            set_cached(TARGET_CACHE, symbol, fetch_price_target(symbol))
+        except Exception:
+            pass
+
+    if get_cached_value(FAIR_VALUE_CACHE, symbol) is None:
+        try:
+            set_cached(FAIR_VALUE_CACHE, symbol, fetch_fair_value(symbol))
+        except Exception:
+            pass
+
+    if get_cached_value(NEWS_CACHE, symbol) is None:
+        try:
+            set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
+        except Exception as e:
+            set_cached(NEWS_CACHE, symbol, {
+                "headwinds": [f"Error loading news: {e}"],
+                "tailwinds": ["—"],
+                "recent_headlines": [],
+            })
+
+    news_summary = get_cached_value(NEWS_CACHE, symbol) or {
+        "headwinds": ["—"],
+        "tailwinds": ["—"],
+        "recent_headlines": [],
+    }
+
+    return {
+        "ticker": symbol,
+        "acquisition_cost": format_money(ACQUISITION_COSTS.get(symbol)) if symbol in ACQUISITION_COSTS else "—",
+        "current_price": format_money(get_cached_value(QUOTE_CACHE, symbol)),
+        "price_target": format_money(get_cached_value(TARGET_CACHE, symbol)),
+        "fair_value": format_money(get_cached_value(FAIR_VALUE_CACHE, symbol)),
+        "headwinds": news_summary["headwinds"],
+        "tailwinds": news_summary["tailwinds"],
+        "recent_headlines": news_summary["recent_headlines"],
+        "is_owned": symbol in OWNED_TICKERS,
+    }
+
+
+# start once
 prime_caches()
 start_scheduler()
 
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", owned_tickers=OWNED_TICKERS)
 
 
-@app.route("/api/portfolio")
-def portfolio_api():
+@app.route("/api/ticker")
+def ticker_api():
+    symbol = request.args.get("symbol", OWNED_TICKERS[0]).upper()
+    row = build_row(symbol)
+
     return jsonify({
         "updated_at": int(time.time()),
         "refresh_windows": {
@@ -409,7 +381,8 @@ def portfolio_api():
             "news_minutes": 30,
         },
         "last_refresh": LAST_REFRESH,
-        "rows": get_portfolio_rows(),
+        "row": row,
+        "owned_tickers": OWNED_TICKERS,
     })
 
 
