@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Portfolio Table</title>
+    <title>Portfolio Research</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,6 +19,43 @@
             color: #6b7280;
             font-size: 14px;
             line-height: 1.5;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 240px 1fr auto auto;
+            gap: 12px;
+            align-items: end;
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            margin-bottom: 16px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        select, input, button {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            width: auto;
+            cursor: pointer;
+            background: #111827;
+            color: white;
+            border: none;
+        }
+        button.secondary {
+            background: white;
+            color: #1f2937;
+            border: 1px solid #cbd5e1;
         }
         .table-wrap {
             overflow-x: auto;
@@ -48,12 +85,6 @@
         tr:hover {
             background: #f3f4f6;
         }
-        .loading {
-            color: #2563eb;
-        }
-        .error {
-            color: #dc2626;
-        }
         .news-cell {
             min-width: 280px;
             white-space: normal;
@@ -64,17 +95,55 @@
             white-space: normal;
             line-height: 1.4;
         }
+        .loading { color: #2563eb; }
+        .error { color: #dc2626; }
         ul {
             margin: 0;
             padding-left: 18px;
         }
+        .banner {
+            margin-top: 12px;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 14px;
+        }
+        @media (max-width: 900px) {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            button {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Portfolio Table</h1>
+    <h1>Portfolio Research</h1>
     <div class="meta">
         Last updated: <span id="last-updated" class="loading">Loading...</span><br>
-        Refresh schedule: <span id="refresh-schedule" class="loading">Loading...</span>
+        Refresh schedule: Quotes 60 min | Targets 24 hr | Fair values 24 hr | News 30 min
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="owned-ticker">Owned ticker</label>
+            <select id="owned-ticker">
+                {% for ticker in owned_tickers %}
+                <option value="{{ ticker }}">{{ ticker }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="search-ticker">Research any ticker</label>
+            <input id="search-ticker" type="text" placeholder="Enter ticker, e.g. META" />
+        </div>
+
+        <button id="search-button" type="button">Search</button>
+        <button id="reset-button" type="button" class="secondary">Use dropdown ticker</button>
     </div>
 
     <div class="table-wrap">
@@ -91,7 +160,7 @@
                     <th>5 Most Recent Headlines</th>
                 </tr>
             </thead>
-            <tbody id="portfolio-body">
+            <tbody id="ticker-body">
                 <tr>
                     <td colspan="8" class="loading">Loading data...</td>
                 </tr>
@@ -99,31 +168,39 @@
         </table>
     </div>
 
+    <div id="research-banner"></div>
+
     <script>
+        const ownedSelect = document.getElementById("owned-ticker");
+        const searchInput = document.getElementById("search-ticker");
+        const searchButton = document.getElementById("search-button");
+        const resetButton = document.getElementById("reset-button");
+        const tbody = document.getElementById("ticker-body");
+        const lastUpdatedEl = document.getElementById("last-updated");
+        const researchBanner = document.getElementById("research-banner");
+
+        let activeSearchTicker = "";
+        let refreshInterval = null;
+
         function toList(items) {
             if (!items || !items.length) return "—";
             return `<ul>${items.map(x => `<li>${x}</li>`).join("")}</ul>`;
         }
 
-        async function loadPortfolio() {
-            const lastUpdatedEl = document.getElementById("last-updated");
-            const refreshScheduleEl = document.getElementById("refresh-schedule");
-            const tbody = document.getElementById("portfolio-body");
+        function getActiveTicker() {
+            return activeSearchTicker || ownedSelect.value;
+        }
 
+        async function loadTicker(symbol) {
             try {
-                const response = await fetch("/api/portfolio");
-                if (!response.ok) {
-                    throw new Error("Failed to load portfolio data");
-                }
+                const response = await fetch(`/api/ticker?symbol=${encodeURIComponent(symbol)}`);
+                if (!response.ok) throw new Error("Failed to load ticker data");
 
                 const payload = await response.json();
-                const rows = payload.rows || [];
+                const row = payload.row;
 
-                tbody.innerHTML = "";
-
-                rows.forEach(row => {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `
+                tbody.innerHTML = `
+                    <tr>
                         <td>${row.ticker}</td>
                         <td>${row.acquisition_cost}</td>
                         <td>${row.current_price}</td>
@@ -132,36 +209,68 @@
                         <td class="news-cell">${toList(row.headwinds)}</td>
                         <td class="news-cell">${toList(row.tailwinds)}</td>
                         <td class="headline-cell">${toList(row.recent_headlines)}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                    </tr>
+                `;
 
                 const updatedAt = new Date(payload.updated_at * 1000);
                 lastUpdatedEl.textContent = updatedAt.toLocaleString();
                 lastUpdatedEl.className = "";
 
-                const rw = payload.refresh_windows || {};
-                refreshScheduleEl.textContent =
-                    `Quotes: ${rw.quotes_minutes ?? "—"} min | ` +
-                    `Targets: ${rw.price_targets_hours ?? "—"} hr | ` +
-                    `Fair values: ${rw.fair_values_hours ?? "—"} hr | ` +
-                    `News: ${rw.news_minutes ?? "—"} min`;
-                refreshScheduleEl.className = "";
+                if (!row.is_owned) {
+                    researchBanner.innerHTML = `
+                        <div class="banner">
+                            Showing research mode for <strong>${row.ticker}</strong>. Acquisition cost is blank for tickers you do not own.
+                        </div>
+                    `;
+                } else {
+                    researchBanner.innerHTML = "";
+                }
             } catch (error) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="error">Could not load data.</td>
+                        <td colspan="8" class="error">Could not load ticker data.</td>
                     </tr>
                 `;
                 lastUpdatedEl.textContent = "Error";
                 lastUpdatedEl.className = "error";
-                refreshScheduleEl.textContent = "Error";
-                refreshScheduleEl.className = "error";
             }
         }
 
-        loadPortfolio();
-        setInterval(loadPortfolio, 60000);
+        function restartAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(() => loadTicker(getActiveTicker()), 60000);
+        }
+
+        ownedSelect.addEventListener("change", () => {
+            activeSearchTicker = "";
+            loadTicker(getActiveTicker());
+            restartAutoRefresh();
+        });
+
+        searchButton.addEventListener("click", () => {
+            const ticker = searchInput.value.trim().toUpperCase();
+            if (!ticker) return;
+            activeSearchTicker = ticker;
+            loadTicker(activeSearchTicker);
+            restartAutoRefresh();
+        });
+
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                searchButton.click();
+            }
+        });
+
+        resetButton.addEventListener("click", () => {
+            activeSearchTicker = "";
+            searchInput.value = "";
+            loadTicker(getActiveTicker());
+            restartAutoRefresh();
+        });
+
+        loadTicker(getActiveTicker());
+        restartAutoRefresh();
     </script>
 </body>
 </html>
