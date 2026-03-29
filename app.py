@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 OWNED_TICKERS = [
     "NVDA", "TSM", "AMD", "MSFT", "GOOGL", "GLD", "HOOD", "AMZN",
@@ -36,6 +37,7 @@ ACQUISITION_COSTS = {
 
 ALPHA_BASE_URL = "https://www.alphavantage.co/query"
 FMP_DCF_URL = "https://financialmodelingprep.com/stable/discounted-cash-flow"
+FINNHUB_BASE_URL = "https://finnhub.io/api/v1/stock/price-target"
 
 QUOTE_CACHE = {}
 TARGET_CACHE = {}
@@ -100,6 +102,22 @@ def fmp_get_dcf(symbol):
         return {}
 
 
+def finnhub_get_price_target(symbol):
+    if not FINNHUB_API_KEY:
+        return {}
+
+    try:
+        response = requests.get(
+            FINNHUB_BASE_URL,
+            params={"symbol": symbol, "token": FINNHUB_API_KEY},
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return {}
+
+
 def set_cached(cache, key, value):
     cache[key] = {"timestamp": int(time.time()), "value": value}
 
@@ -109,11 +127,6 @@ def get_cached_value(cache, key):
     return item["value"] if item else None
 
 
-def get_cached_timestamp(cache, key):
-    item = cache.get(key)
-    return item["timestamp"] if item else None
-
-
 def fetch_current_price(symbol):
     data = alpha_get({"function": "GLOBAL_QUOTE", "symbol": symbol})
     quote = data.get("Global Quote", {})
@@ -121,8 +134,13 @@ def fetch_current_price(symbol):
 
 
 def fetch_price_target(symbol):
-    data = alpha_get({"function": "OVERVIEW", "symbol": symbol})
-    return data.get("AnalystTargetPrice")
+    data = finnhub_get_price_target(symbol)
+
+    for key in ("targetMean", "targetMedian", "targetHigh", "targetLow"):
+        if key in data and data[key] not in (None, 0):
+            return data[key]
+
+    return None
 
 
 def fetch_fair_value(symbol):
@@ -168,9 +186,6 @@ def summarize_news(feed, symbol):
 
         label = (item.get("overall_sentiment_label") or "").lower()
 
-        # Your requested naming:
-        # Headwinds = positive momentum
-        # Tailwinds = negative momentum
         if score_value is not None:
             if score_value > 0.15 and title:
                 positive.append(title)
@@ -234,7 +249,7 @@ def fetch_chart_history(symbol):
             continue
 
     rows.sort(key=lambda x: x["date"])
-    rows = rows[-260:]  # about 1 year of trading days
+    rows = rows[-260:]
 
     closes = [r["close"] for r in rows]
     ma50 = moving_average(closes, 50)
@@ -327,7 +342,6 @@ def build_row(symbol):
     if get_cached_value(NEWS_CACHE, symbol) is None:
         set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
 
-    # Chart context only refreshes daily, or on first request for a ticker with no cache
     if get_cached_value(CHART_CACHE, symbol) is None:
         set_cached(CHART_CACHE, symbol, fetch_chart_history(symbol))
         LAST_REFRESH["chart_context"] = int(time.time())
