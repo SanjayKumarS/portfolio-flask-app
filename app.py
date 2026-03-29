@@ -41,12 +41,14 @@ QUOTE_CACHE = {}
 TARGET_CACHE = {}
 FAIR_VALUE_CACHE = {}
 NEWS_CACHE = {}
+CHART_CACHE = {}
 
 LAST_REFRESH = {
     "quotes": None,
     "targets": None,
     "fair_values": None,
     "news": None,
+    "chart_context": None,
 }
 
 scheduler = BackgroundScheduler(timezone="America/New_York")
@@ -107,6 +109,11 @@ def get_cached_value(cache, key):
     return item["value"] if item else None
 
 
+def get_cached_timestamp(cache, key):
+    item = cache.get(key)
+    return item["timestamp"] if item else None
+
+
 def fetch_current_price(symbol):
     data = alpha_get({"function": "GLOBAL_QUOTE", "symbol": symbol})
     quote = data.get("Global Quote", {})
@@ -161,6 +168,9 @@ def summarize_news(feed, symbol):
 
         label = (item.get("overall_sentiment_label") or "").lower()
 
+        # Your requested naming:
+        # Headwinds = positive momentum
+        # Tailwinds = negative momentum
         if score_value is not None:
             if score_value > 0.15 and title:
                 positive.append(title)
@@ -193,6 +203,54 @@ def fetch_news(symbol):
     })
     feed = data.get("feed", [])[:5] if isinstance(data, dict) else []
     return summarize_news(feed, symbol)
+
+
+def moving_average(values, period):
+    out = []
+    for i in range(len(values)):
+        if i + 1 < period:
+            out.append(None)
+        else:
+            window = values[i - period + 1:i + 1]
+            out.append(sum(window) / period)
+    return out
+
+
+def fetch_chart_history(symbol):
+    data = alpha_get({
+        "function": "TIME_SERIES_DAILY",
+        "symbol": symbol,
+        "outputsize": "full",
+    })
+
+    series = data.get("Time Series (Daily)", {}) if isinstance(data, dict) else {}
+    rows = []
+
+    for date_str, values in series.items():
+        try:
+            close = float(values["4. close"])
+            rows.append({"date": date_str, "close": close})
+        except Exception:
+            continue
+
+    rows.sort(key=lambda x: x["date"])
+    rows = rows[-260:]  # about 1 year of trading days
+
+    closes = [r["close"] for r in rows]
+    ma50 = moving_average(closes, 50)
+    ma200 = moving_average(closes, 200)
+
+    chart_rows = []
+    for i, row in enumerate(rows):
+        chart_rows.append({
+            "date": row["date"],
+            "label": row["date"][5:],
+            "close": row["close"],
+            "ma50": ma50[i],
+            "ma200": ma200[i],
+        })
+
+    return chart_rows
 
 
 def refresh_quotes():
@@ -231,6 +289,15 @@ def refresh_news_all():
     LAST_REFRESH["news"] = int(time.time())
 
 
+def refresh_chart_context():
+    for symbol in OWNED_TICKERS:
+        try:
+            set_cached(CHART_CACHE, symbol, fetch_chart_history(symbol))
+        except Exception:
+            pass
+    LAST_REFRESH["chart_context"] = int(time.time())
+
+
 def start_scheduler():
     if scheduler.running:
         return
@@ -239,6 +306,7 @@ def start_scheduler():
     scheduler.add_job(refresh_targets, trigger="interval", hours=24, id="refresh_targets", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(refresh_fair_values, trigger="interval", hours=24, id="refresh_fair_values", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(refresh_news_all, trigger="interval", minutes=30, id="refresh_news", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(refresh_chart_context, trigger="interval", hours=24, id="refresh_chart_context", replace_existing=True, max_instances=1, coalesce=True)
 
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown(wait=False))
@@ -259,11 +327,18 @@ def build_row(symbol):
     if get_cached_value(NEWS_CACHE, symbol) is None:
         set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
 
+    # Chart context only refreshes daily, or on first request for a ticker with no cache
+    if get_cached_value(CHART_CACHE, symbol) is None:
+        set_cached(CHART_CACHE, symbol, fetch_chart_history(symbol))
+        LAST_REFRESH["chart_context"] = int(time.time())
+
     news_summary = get_cached_value(NEWS_CACHE, symbol) or {
         "headwinds": ["—"],
         "tailwinds": ["—"],
         "recent_headlines": [],
     }
+
+    chart_data = get_cached_value(CHART_CACHE, symbol) or []
 
     return {
         "ticker": symbol,
@@ -274,6 +349,7 @@ def build_row(symbol):
         "headwinds": news_summary["headwinds"],
         "tailwinds": news_summary["tailwinds"],
         "recent_headlines": news_summary["recent_headlines"],
+        "chart_data": chart_data,
         "is_owned": symbol in OWNED_TICKERS,
     }
 
@@ -299,6 +375,7 @@ def ticker_api():
                 "price_targets_hours": 24,
                 "fair_values_hours": 24,
                 "news_minutes": 30,
+                "chart_context_hours": 24,
             },
             "last_refresh": LAST_REFRESH,
             "row": row,
@@ -317,6 +394,7 @@ def ticker_api():
                 "headwinds": [f"API error: {e}"],
                 "tailwinds": ["—"],
                 "recent_headlines": [],
+                "chart_data": [],
                 "is_owned": False,
             }
         }), 200
