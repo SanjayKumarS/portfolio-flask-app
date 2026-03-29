@@ -63,38 +63,39 @@ def format_money(value):
 
 def alpha_get(params):
     if not ALPHA_VANTAGE_API_KEY:
-        raise RuntimeError("Missing ALPHA_VANTAGE_API_KEY")
+        return {}
 
     merged = dict(params)
     merged["apikey"] = ALPHA_VANTAGE_API_KEY
 
-    response = requests.get(ALPHA_BASE_URL, params=merged, timeout=30)
-    response.raise_for_status()
-    data = response.json()
+    try:
+        response = requests.get(ALPHA_BASE_URL, params=merged, timeout=30)
+        response.raise_for_status()
+        data = response.json()
 
-    if isinstance(data, dict):
-        if data.get("Note"):
-            raise RuntimeError(data["Note"])
-        if data.get("Information"):
-            raise RuntimeError(data["Information"])
-        if data.get("Error Message"):
-            raise RuntimeError(data["Error Message"])
+        if isinstance(data, dict):
+            if data.get("Note") or data.get("Information") or data.get("Error Message"):
+                return {}
 
-    return data
+        return data
+    except Exception:
+        return {}
 
 
 def fmp_get_dcf(symbol):
     if not FMP_API_KEY:
-        raise RuntimeError("Missing FMP_API_KEY")
+        return {}
 
-    response = requests.get(
-        FMP_DCF_URL,
-        params={"symbol": symbol, "apikey": FMP_API_KEY},
-        timeout=30
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data
+    try:
+        response = requests.get(
+            FMP_DCF_URL,
+            params={"symbol": symbol, "apikey": FMP_API_KEY},
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return {}
 
 
 def set_cached(cache, key, value):
@@ -160,9 +161,6 @@ def summarize_news(feed, symbol):
 
         label = (item.get("overall_sentiment_label") or "").lower()
 
-        # per your naming:
-        # Headwinds = positive momentum
-        # Tailwinds = negative momentum
         if score_value is not None:
             if score_value > 0.15 and title:
                 positive.append(title)
@@ -193,30 +191,8 @@ def fetch_news(symbol):
         "sort": "LATEST",
         "limit": 5,
     })
-    feed = data.get("feed", [])[:5]
+    feed = data.get("feed", [])[:5] if isinstance(data, dict) else []
     return summarize_news(feed, symbol)
-
-
-def refresh_symbol(symbol):
-    try:
-        set_cached(QUOTE_CACHE, symbol, fetch_current_price(symbol))
-    except Exception:
-        pass
-
-    try:
-        set_cached(TARGET_CACHE, symbol, fetch_price_target(symbol))
-    except Exception:
-        pass
-
-    try:
-        set_cached(FAIR_VALUE_CACHE, symbol, fetch_fair_value(symbol))
-    except Exception:
-        pass
-
-    try:
-        set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
-    except Exception:
-        pass
 
 
 def refresh_quotes():
@@ -255,53 +231,14 @@ def refresh_news_all():
     LAST_REFRESH["news"] = int(time.time())
 
 
-def prime_caches():
-    refresh_quotes()
-    refresh_targets()
-    refresh_fair_values()
-    refresh_news_all()
-
-
 def start_scheduler():
     if scheduler.running:
         return
 
-    scheduler.add_job(
-        refresh_quotes,
-        trigger="interval",
-        minutes=60,
-        id="refresh_quotes",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.add_job(
-        refresh_targets,
-        trigger="interval",
-        hours=24,
-        id="refresh_targets",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.add_job(
-        refresh_fair_values,
-        trigger="interval",
-        hours=24,
-        id="refresh_fair_values",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.add_job(
-        refresh_news_all,
-        trigger="interval",
-        minutes=30,
-        id="refresh_news",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-    )
+    scheduler.add_job(refresh_quotes, trigger="interval", minutes=60, id="refresh_quotes", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(refresh_targets, trigger="interval", hours=24, id="refresh_targets", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(refresh_fair_values, trigger="interval", hours=24, id="refresh_fair_values", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(refresh_news_all, trigger="interval", minutes=30, id="refresh_news", replace_existing=True, max_instances=1, coalesce=True)
 
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown(wait=False))
@@ -311,32 +248,16 @@ def build_row(symbol):
     symbol = symbol.upper()
 
     if get_cached_value(QUOTE_CACHE, symbol) is None:
-        try:
-            set_cached(QUOTE_CACHE, symbol, fetch_current_price(symbol))
-        except Exception:
-            pass
+        set_cached(QUOTE_CACHE, symbol, fetch_current_price(symbol))
 
     if get_cached_value(TARGET_CACHE, symbol) is None:
-        try:
-            set_cached(TARGET_CACHE, symbol, fetch_price_target(symbol))
-        except Exception:
-            pass
+        set_cached(TARGET_CACHE, symbol, fetch_price_target(symbol))
 
     if get_cached_value(FAIR_VALUE_CACHE, symbol) is None:
-        try:
-            set_cached(FAIR_VALUE_CACHE, symbol, fetch_fair_value(symbol))
-        except Exception:
-            pass
+        set_cached(FAIR_VALUE_CACHE, symbol, fetch_fair_value(symbol))
 
     if get_cached_value(NEWS_CACHE, symbol) is None:
-        try:
-            set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
-        except Exception as e:
-            set_cached(NEWS_CACHE, symbol, {
-                "headwinds": [f"Error loading news: {e}"],
-                "tailwinds": ["—"],
-                "recent_headlines": [],
-            })
+        set_cached(NEWS_CACHE, symbol, fetch_news(symbol))
 
     news_summary = get_cached_value(NEWS_CACHE, symbol) or {
         "headwinds": ["—"],
@@ -357,8 +278,6 @@ def build_row(symbol):
     }
 
 
-# start once
-prime_caches()
 start_scheduler()
 
 
@@ -369,21 +288,38 @@ def index():
 
 @app.route("/api/ticker")
 def ticker_api():
-    symbol = request.args.get("symbol", OWNED_TICKERS[0]).upper()
-    row = build_row(symbol)
+    try:
+        symbol = request.args.get("symbol", OWNED_TICKERS[0]).upper()
+        row = build_row(symbol)
 
-    return jsonify({
-        "updated_at": int(time.time()),
-        "refresh_windows": {
-            "quotes_minutes": 60,
-            "price_targets_hours": 24,
-            "fair_values_hours": 24,
-            "news_minutes": 30,
-        },
-        "last_refresh": LAST_REFRESH,
-        "row": row,
-        "owned_tickers": OWNED_TICKERS,
-    })
+        return jsonify({
+            "updated_at": int(time.time()),
+            "refresh_windows": {
+                "quotes_minutes": 60,
+                "price_targets_hours": 24,
+                "fair_values_hours": 24,
+                "news_minutes": 30,
+            },
+            "last_refresh": LAST_REFRESH,
+            "row": row,
+            "owned_tickers": OWNED_TICKERS,
+        })
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "updated_at": int(time.time()),
+            "row": {
+                "ticker": request.args.get("symbol", OWNED_TICKERS[0]).upper(),
+                "acquisition_cost": "—",
+                "current_price": "—",
+                "price_target": "—",
+                "fair_value": "—",
+                "headwinds": [f"API error: {e}"],
+                "tailwinds": ["—"],
+                "recent_headlines": [],
+                "is_owned": False,
+            }
+        }), 200
 
 
 if __name__ == "__main__":
